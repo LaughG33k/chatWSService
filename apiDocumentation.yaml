@@ -1,67 +1,62 @@
-asyncapi: "3.0.0"
+asyncapi: 3.0.0
 info:
   title: Chat Ws Service
   version: 1.0.0
   description: Accepts ws connections and procceses incoming messages
 
-servers:
-  production:
-    host: host:port
-    pathname: /ws
-    protocol: ws
-    description: websocket chat 
 
 channels:
-  chat:
-    address: /chat 
-    messages:
-      message:
-        $ref: '#/components/messages/101'
+  /chat:
+    address: /chat
+    messages: {}
+operations:
+  clientMessages:
+    action: receive
+    channel:
+      $ref: '#/channels/~1chat'
+  serverMessages:
+    action: send
+    channel:
+      $ref: '#/channels/~1chat'
 
 
 
 components:
   messages:
-    101:
-      payload: 
+    '101':
+      payload:
         $ref: '#/components/schemas/textMessage'
-    103:
+    '103':
       payload:
         $ref: '#/components/schemas/reqGetHistory'
-    104:
+    '104':
       payload:
         $ref: '#/components/schemas/reqDelMsg'
-        
-
-
-
   schemas:
-  
     textMessage:
-      type: object 
-      properties:
-        body:
-          type: object
-          properties: 
-            text:
-              type: string
-            recipient: 
-              description: recipient's uuid 
-              type: string
-            message_id:
-              description: it can be anything, but must be unique. Else message will be rewritten
-              type: string
-  
-    reqGetHistory:
-
       type: object
       properties:
         body:
           type: object
           properties:
-            with_whom: 
+            text:
               type: string
-    
+            recipient:
+              description: recipient's uuid
+              type: string
+            message_id:
+              description: >-
+                it can be anything, but must be unique. Else message will be
+                rewritten
+              type: string
+    reqGetHistory:
+      type: object
+      properties:
+        body:
+          type: object
+          properties:
+            with_whom:
+              type: string
     reqDelMsg:
       type: object
       properties:
@@ -71,14 +66,9 @@ components:
             message_id:
               type: string
             with_whom:
-              description: uuid of message's receiver 
+              description: uuid of message's receiver
               type: string
             flag_del_for_evr:
               description: if it's true message will be delete for evryone
               type: boolean
-              
-
-
-      
-        
-
+    
