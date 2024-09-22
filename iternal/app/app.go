@@ -3,17 +3,22 @@ package app
 import (
 	"context"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	rediscl "github.com/LaughG33k/chatWSService/iternal/client/redis"
 	"github.com/LaughG33k/chatWSService/iternal/handler"
+	"github.com/LaughG33k/chatWSService/pkg"
 
 	"github.com/redis/go-redis/v9"
 )
 
 func Run() {
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	httpServer, err := initHttpServer(
 		"127.0.0.1",
@@ -41,7 +46,9 @@ func Run() {
 		ReadTimeout:    1 * time.Minute,
 		WriteTimeout:   45 * time.Second,
 		PoolTimeout:    1 * time.Minute,
-	}, 2*time.Second)
+	}, 3*time.Second)
+
+	redisCliet.Start()
 
 	wsChatHandler := handler.NewWsChatHandler(ctx, redisCliet)
 
@@ -50,5 +57,11 @@ func Run() {
 	if err := httpServer.ListenAndServe(); err != nil {
 		log.Panic(err)
 	}
+
+	<-ctx.Done()
+
+	tm, canc := context.WithTimeout(context.Background(), 40*time.Second)
+	defer canc()
+	pkg.C.Close(tm)
 
 }

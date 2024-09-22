@@ -60,11 +60,3 @@ func (c *WsConnection) send(data []byte) error {
 	return nil
 
 }
-
-func (c *WsConnection) readFromRedis() {
-
-	if err := c.redisClient.SubscribeOnGetMessage(c.connUuid, c.receiveChan); err != nil {
-		fmt.Println(err)
-	}
-
-}

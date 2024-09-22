@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -10,13 +11,16 @@ import (
 )
 
 type RedisClient struct {
-	ctx        context.Context
-	clinet     *redis.Client
-	pipe       redis.Pipeliner
-	sub        *redis.PubSub
-	channels   map[string]chan []byte
-	mu         *sync.Mutex
-	channelsMu *sync.RWMutex
+	ctx                   context.Context
+	clinet                *redis.Client
+	pipe                  redis.Pipeliner
+	sub                   *redis.PubSub
+	channels              map[string]chan []byte
+	mu                    *sync.Mutex
+	channelsMu            *sync.RWMutex
+	timeSleepForSendBatch time.Duration
+	stop                  chan struct{}
+	onceClose             sync.Once
 }
 
 func NewClient(ctx context.Context, redisConfig *redis.Options, timeSleepForSendBatch time.Duration) *RedisClient {
@@ -26,64 +30,130 @@ func NewClient(ctx context.Context, redisConfig *redis.Options, timeSleepForSend
 	sub := client.Subscribe(ctx)
 
 	rc := &RedisClient{
-		clinet:     client,
-		ctx:        ctx,
-		pipe:       pipe,
-		sub:        sub,
-		channels:   make(map[string]chan []byte, redisConfig.MaxActiveConns),
-		mu:         &sync.Mutex{},
-		channelsMu: &sync.RWMutex{},
+		clinet:                client,
+		pipe:                  pipe,
+		sub:                   sub,
+		channels:              make(map[string]chan []byte, redisConfig.MaxActiveConns),
+		mu:                    &sync.Mutex{},
+		channelsMu:            &sync.RWMutex{},
+		timeSleepForSendBatch: timeSleepForSendBatch,
+		stop:                  make(chan struct{}),
+		onceClose:             sync.Once{},
 	}
 
-	go func() {
-
-		for {
-
-			time.Sleep(timeSleepForSendBatch)
-
-			rc.mu.Lock()
-			if _, err := pipe.Exec(ctx); err != nil {
-				fmt.Println(err)
-			}
-			rc.mu.Unlock()
-
-		}
-
-	}()
-
-	go func() {
-
-		for {
-
-			msg, err := sub.Receive(ctx)
-
-			if err != nil {
-				return
-			}
-
-			switch msg := msg.(type) {
-
-			case *redis.Subscription:
-
-			case *redis.Pong:
-
-			case *redis.Message:
-
-				rc.channelsMu.RLock()
-
-				if rcChan, ok := rc.channels[msg.Channel]; ok {
-					rcChan <- []byte(msg.Payload)
-				}
-
-				rc.channelsMu.RUnlock()
-
-			}
-
-		}
-
-	}()
-
 	return rc
+}
+
+func (c *RedisClient) Start() {
+
+	go func() {
+		if err := c.sendBatch(); err != nil {
+			fmt.Println(err)
+		}
+	}()
+
+	go func() {
+		if err := c.read(); err != nil {
+			fmt.Println(err)
+		}
+	}()
+
+}
+
+func (c *RedisClient) Close() (err error) {
+
+	c.onceClose.Do(func() {
+
+		time.Sleep(15 * time.Second)
+		close(c.stop)
+
+		if cErr := c.clinet.Close(); cErr != nil {
+			err = errors.Join(err, cErr)
+		}
+
+		if sErr := c.sub.Close(); sErr != nil {
+			err = errors.Join(err, sErr)
+		}
+
+	})
+
+	return err
+}
+
+func (c *RedisClient) sendBatch() error {
+
+	for {
+
+		if c.isStop() {
+			return nil
+		}
+
+		time.Sleep(c.timeSleepForSendBatch)
+
+		c.mu.Lock()
+		if _, err := c.pipe.Exec(c.ctx); err != nil {
+			c.Close()
+			return err
+		}
+		c.mu.Unlock()
+
+	}
+
+}
+
+func (c *RedisClient) read() error {
+
+	for {
+
+		if c.isStop() {
+			return nil
+		}
+
+		tm, canc := context.WithTimeout(c.ctx, 1*time.Minute)
+		defer canc()
+		msg, err := c.sub.Receive(tm)
+
+		if err != nil {
+			c.Close()
+			return err
+		}
+
+		switch msg := msg.(type) {
+
+		case *redis.Subscription:
+
+		case *redis.Pong:
+
+		case *redis.Message:
+
+			c.channelsMu.RLock()
+
+			if rcChan, ok := c.channels[msg.Channel]; ok {
+				rcChan <- []byte(msg.Payload)
+			}
+
+			c.channelsMu.RUnlock()
+
+		}
+
+	}
+
+}
+
+func (c *RedisClient) isStop() bool {
+
+	select {
+
+	case _, ok := <-c.stop:
+		if !ok {
+			return true
+		}
+
+	default:
+	}
+
+	return false
+
 }
 
 func (c *RedisClient) PublishMessageToSend(receiverUuid string, message []byte) error {

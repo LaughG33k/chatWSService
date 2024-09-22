@@ -6,7 +6,17 @@ type WsMessage struct {
 }
 
 type Body101 struct {
-	Text      string
-	Receiver  string
-	MessageId string
+	Text      string `json:"text"`
+	Receiver  string `json:"recipient"`
+	MessageId string `json:"message_id"`
+}
+
+type Body103 struct {
+	WithWhom string `json:"with_whom"`
+}
+
+type Body104 struct {
+	MessageId     string `json:"message_id"`
+	WithWhom      string `json:"with_whom"`
+	FlagDelForEvr string `json:"flag_del_for_evr"`
 }

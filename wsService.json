@@ -3,8 +3,7 @@
     "service": {
         "name": "wsService",
         "tags": ["golang", "websocket", "http"],
-        "port": 8001,
-        "address": "127.0.0.1"
+        "port": 8001
 
     }
 
