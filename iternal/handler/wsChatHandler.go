@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/LaughG33k/chatWSService/iternal/client/redis"
+	"github.com/LaughG33k/chatWSService/iternal/repository"
 	wsconn "github.com/LaughG33k/chatWSService/iternal/wsConn"
 
 	"github.com/gorilla/websocket"
@@ -27,9 +28,10 @@ var upgrader *websocket.Upgrader = &websocket.Upgrader{
 type WsChatHandler struct {
 	ctx         context.Context
 	redisClient *redis.RedisClient
+	msgRepo     repository.Messages
 }
 
-func NewWsChatHandler(ctx context.Context, redisClient *redis.RedisClient) *WsChatHandler {
+func NewWsChatHandler(ctx context.Context, redisClient *redis.RedisClient, msgRepo repository.Messages) *WsChatHandler {
 	return &WsChatHandler{
 		ctx:         ctx,
 		redisClient: redisClient,
@@ -37,9 +39,7 @@ func NewWsChatHandler(ctx context.Context, redisClient *redis.RedisClient) *WsCh
 }
 
 func (h *WsChatHandler) StartHandler() {
-
 	http.HandleFunc("/ws/chat", h.startWsConn)
-
 }
 
 func (h *WsChatHandler) startWsConn(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +53,7 @@ func (h *WsChatHandler) startWsConn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wsConn := wsconn.NewWsConn(h.ctx, conn, h.redisClient, uuid, 0)
+	wsConn := wsconn.NewWsConn(conn, h.redisClient, h.msgRepo, uuid)
 
 	if wsConn == nil {
 		return
