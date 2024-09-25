@@ -64,7 +64,7 @@ func (c *RedisClient) Close() (err error) {
 
 	c.onceClose.Do(func() {
 
-		time.Sleep(15 * time.Second)
+		time.Sleep(1 * time.Minute)
 		close(c.stop)
 
 		if cErr := c.clinet.Close(); cErr != nil {

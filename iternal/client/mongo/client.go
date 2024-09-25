@@ -35,10 +35,10 @@ type MongoClientConfig struct {
 	Db          string
 	Collections []string
 
-	BulkWriteTimeSleep     time.Duration
-	HealthCheakWaitingTime time.Duration
-	ReconectWaitingTime    time.Duration
-	OperationTimeout       time.Duration
+	BulkWriteTimeSleep   time.Duration
+	HealthCheakTimeSleep time.Duration
+	ReconectTimeSleep    time.Duration
+	OperationTimeout     time.Duration
 
 	SizeWriteBulkBuffer int
 	RecconectAttempts   int
@@ -98,7 +98,7 @@ func (c *MongoClient) HealthCheck() {
 
 	for {
 
-		time.Sleep(c.cfg.HealthCheakWaitingTime)
+		time.Sleep(c.cfg.HealthCheakTimeSleep)
 
 		if c.closeClient {
 			return
@@ -153,7 +153,7 @@ func (c *MongoClient) recconect(ctx context.Context) error {
 		c.reInitCollections()
 
 		return nil
-	}, c.cfg.RecconectAttempts, c.cfg.ReconectWaitingTime)
+	}, c.cfg.RecconectAttempts, c.cfg.ReconectTimeSleep)
 
 	if err != nil {
 		if err := c.Close(ctx); err != nil {
@@ -168,7 +168,7 @@ func (c *MongoClient) Close(ctx context.Context) (err error) {
 
 	c.onceClose.Do(func() {
 
-		time.Sleep(15 * time.Second)
+		time.Sleep(1 * time.Minute)
 
 		c.closeClient = true
 
