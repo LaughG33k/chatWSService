@@ -8,8 +8,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/LaughG33k/chatWSService/iternal/client/mongo"
 	rediscl "github.com/LaughG33k/chatWSService/iternal/client/redis"
 	"github.com/LaughG33k/chatWSService/iternal/handler"
+	messagesrepository "github.com/LaughG33k/chatWSService/iternal/repository/messagesRepository"
 	"github.com/LaughG33k/chatWSService/pkg"
 
 	"github.com/redis/go-redis/v9"
@@ -31,7 +33,7 @@ func Run() {
 	)
 
 	if err != nil {
-		log.Panic(err)
+		pkg.Log.Fatal(err)
 		return
 	}
 
@@ -50,7 +52,31 @@ func Run() {
 
 	redisCliet.Start()
 
-	wsChatHandler := handler.NewWsChatHandler(ctx, redisCliet)
+	tmMongo, cancM := context.WithTimeout(ctx, 45*time.Second)
+	defer cancM()
+
+	mongoClient, err := mongo.NewMongoClient(tmMongo, mongo.MongoClientConfig{
+		Host:                 "127.0.0.1",
+		Port:                 "27017",
+		Db:                   "messages",
+		BulkWriteTimeSleep:   3 * time.Second,
+		HealthCheakTimeSleep: 15 * time.Second,
+		ReconectTimeSleep:    10 * time.Second,
+		RecconectAttempts:    6,
+		OperationTimeout:     45 * time.Second,
+		MaxPoolSize:          250,
+		RetryWrites:          true,
+		RetryReads:           true,
+	})
+
+	if err != nil {
+		pkg.Log.Fatal(err)
+		return
+	}
+
+	msgRepo := messagesrepository.NewRepository(mongoClient, "messages")
+
+	wsChatHandler := handler.NewWsChatHandler(ctx, redisCliet, msgRepo)
 
 	wsChatHandler.StartHandler()
 
