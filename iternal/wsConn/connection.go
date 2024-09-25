@@ -2,40 +2,37 @@ package wsconn
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/LaughG33k/chatWSService/iternal/client/redis"
+	"github.com/LaughG33k/chatWSService/iternal/repository"
 	"github.com/LaughG33k/chatWSService/pkg"
 
 	"github.com/gorilla/websocket"
 )
 
 type WsConnection struct {
-	ctx         context.Context
 	conn        *websocket.Conn
 	redisClient *redis.RedisClient
+	msgRepo     repository.Messages
 	receiveChan chan []byte
 	stopChan    chan struct{}
 	connUuid    string
-	connTimeout int64
 	onceClose   sync.Once
 	wp          *pkg.WorkerPool
 	mu          sync.Mutex
 }
 
-func NewWsConn(ctx context.Context, conn *websocket.Conn, redisClient *redis.RedisClient, connUuid string, connTimeout int64) *WsConnection {
+func NewWsConn(conn *websocket.Conn, redisClient *redis.RedisClient, msgRepo repository.Messages, connUuid string) *WsConnection {
 
 	return &WsConnection{
-
-		ctx:         ctx,
 		conn:        conn,
 		redisClient: redisClient,
+		msgRepo:     msgRepo,
 		receiveChan: make(chan []byte, 100),
 		stopChan:    make(chan struct{}),
 		connUuid:    connUuid,
-		connTimeout: connTimeout,
 		onceClose:   sync.Once{},
 		wp:          pkg.NewWorkerPool(10),
 	}
@@ -44,16 +41,15 @@ func NewWsConn(ctx context.Context, conn *websocket.Conn, redisClient *redis.Red
 
 func (c *WsConnection) Start() {
 
-	pkg.C.Add(func(ctx context.Context) error {
-		return c.dropConn()
-	})
-
 	if err := c.redisClient.SubscribeOnGetMessage(c.connUuid, c.receiveChan); err != nil {
-		fmt.Println(err)
+		pkg.Log.Infof("error with redis %s: %s", c.connUuid, err)
 	}
 
 	go c.read()
 	go func() {
+		defer func() {
+			pkg.Log.Infof("exit from process gorutine: %s", c.connUuid)
+		}()
 		for {
 
 			select {
@@ -65,12 +61,15 @@ func (c *WsConnection) Start() {
 
 			case data := <-c.receiveChan:
 
-				if err := c.proccessIncomingMessage(data); err != nil {
-					fmt.Println(err)
-				}
-
-			case <-c.ctx.Done():
-				c.dropConn()
+				c.wp.AddWorker(func() {
+					tm, canc := context.WithTimeout(context.TODO(), 45*time.Second)
+					defer canc()
+					pkg.Log.Infof("start worker for %s", c.connUuid)
+					if err := c.proccessIncomingMessage(tm, data); err != nil {
+						pkg.Log.Infof("error for conn %s: %s", c.connUuid, err)
+					}
+					pkg.Log.Infof("finished worker for %s", c.connUuid)
+				})
 
 			}
 

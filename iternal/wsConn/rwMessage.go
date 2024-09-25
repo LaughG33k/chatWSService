@@ -3,10 +3,15 @@ package wsconn
 import (
 	"fmt"
 
+	"github.com/LaughG33k/chatWSService/pkg"
 	"github.com/gorilla/websocket"
 )
 
 func (c *WsConnection) read() {
+
+	defer func() {
+		pkg.Log.Infof("exit from read gorutine: %s", c.connUuid)
+	}()
 
 	for {
 
