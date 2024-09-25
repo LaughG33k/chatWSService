@@ -18,13 +18,9 @@ func (wp *WorkerPool) AddWorker(fn func()) {
 
 	go func() {
 
-		worker := <-wp.worker
-
-		worker()
+		fn()
 		<-wp.pool
 
 	}()
-
-	wp.worker <- fn
 
 }
