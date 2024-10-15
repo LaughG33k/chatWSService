@@ -5,18 +5,23 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LaughG33k/chatWSService/iternal/client/redis"
-	"github.com/LaughG33k/chatWSService/iternal/repository"
+	"github.com/LaughG33k/chatWSService/iternal/queue"
+	"github.com/LaughG33k/chatWSService/iternal/service"
 	"github.com/LaughG33k/chatWSService/pkg"
 
 	"github.com/gorilla/websocket"
 )
 
+type ReadWriter interface {
+	Read() []byte
+	Write() error
+}
+
 type WsConnection struct {
 	conn        *websocket.Conn
-	redisClient *redis.RedisClient
-	msgRepo     repository.Messages
-	receiveChan chan []byte
+	queue       queue.Queue
+	receiveChan chan any
+	chatService service.ChatService
 	stopChan    chan struct{}
 	connUuid    string
 	onceClose   sync.Once
@@ -24,14 +29,14 @@ type WsConnection struct {
 	mu          sync.Mutex
 }
 
-func NewWsConn(conn *websocket.Conn, redisClient *redis.RedisClient, msgRepo repository.Messages, connUuid string) *WsConnection {
+func NewWsConn(conn *websocket.Conn, chatService service.ChatService, queue queue.Queue, connUuid string) *WsConnection {
 
 	return &WsConnection{
 		conn:        conn,
-		redisClient: redisClient,
-		msgRepo:     msgRepo,
-		receiveChan: make(chan []byte, 100),
+		receiveChan: make(chan any, 100),
 		stopChan:    make(chan struct{}),
+		chatService: chatService,
+		queue:       queue,
 		connUuid:    connUuid,
 		onceClose:   sync.Once{},
 		wp:          pkg.NewWorkerPool(10),
@@ -39,9 +44,9 @@ func NewWsConn(conn *websocket.Conn, redisClient *redis.RedisClient, msgRepo rep
 
 }
 
-func (c *WsConnection) Start() {
+func (c *WsConnection) Start(ctx context.Context) {
 
-	if err := c.redisClient.SubscribeOnGetMessage(c.connUuid, c.receiveChan); err != nil {
+	if err := c.queue.Subscribe(ctx, c.connUuid, c.receiveChan); err != nil {
 		pkg.Log.Infof("error with redis %s: %s", c.connUuid, err)
 	}
 

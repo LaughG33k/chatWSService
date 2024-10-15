@@ -15,7 +15,7 @@ type RedisClient struct {
 	clinet                *redis.Client
 	pipe                  redis.Pipeliner
 	sub                   *redis.PubSub
-	channels              map[string]chan []byte
+	channels              map[string]chan any
 	mu                    *sync.Mutex
 	channelsMu            *sync.RWMutex
 	timeSleepForSendBatch time.Duration
@@ -33,7 +33,7 @@ func NewClient(ctx context.Context, redisConfig *redis.Options, timeSleepForSend
 		clinet:                client,
 		pipe:                  pipe,
 		sub:                   sub,
-		channels:              make(map[string]chan []byte, redisConfig.MaxActiveConns),
+		channels:              make(map[string]chan any, redisConfig.MaxActiveConns),
 		mu:                    &sync.Mutex{},
 		channelsMu:            &sync.RWMutex{},
 		timeSleepForSendBatch: timeSleepForSendBatch,
@@ -129,7 +129,13 @@ func (c *RedisClient) read() error {
 			c.channelsMu.RLock()
 
 			if rcChan, ok := c.channels[msg.Channel]; ok {
-				rcChan <- []byte(msg.Payload)
+
+				select {
+				case rcChan <- []byte(msg.Payload):
+				default:
+
+				}
+
 			}
 
 			c.channelsMu.RUnlock()
@@ -156,10 +162,10 @@ func (c *RedisClient) isStop() bool {
 
 }
 
-func (c *RedisClient) PublishMessageToSend(receiverUuid string, message []byte) error {
+func (c *RedisClient) Publish(ctx context.Context, channel string, message any) error {
 
 	c.mu.Lock()
-	subs := c.pipe.Publish(c.ctx, fmt.Sprintf("chat:message:%s", receiverUuid), message)
+	subs := c.pipe.Publish(c.ctx, channel, message)
 	c.mu.Unlock()
 
 	if subs.Err() != nil {
@@ -170,11 +176,9 @@ func (c *RedisClient) PublishMessageToSend(receiverUuid string, message []byte) 
 
 }
 
-func (c *RedisClient) SubscribeOnGetMessage(receiverUuid string, receiveCahn chan []byte) error {
+func (c *RedisClient) Subscribe(ctx context.Context, channel string, ch chan any) error {
 
-	channel := fmt.Sprintf("chat:message:%s", receiverUuid)
-
-	if err := c.sub.Subscribe(c.ctx, channel); err != nil {
+	if err := c.sub.Subscribe(ctx, channel); err != nil {
 		return err
 	}
 
@@ -185,7 +189,7 @@ func (c *RedisClient) SubscribeOnGetMessage(receiverUuid string, receiveCahn cha
 		return nil
 	}
 
-	c.channels[channel] = receiveCahn
+	c.channels[channel] = ch
 
 	return nil
 }

@@ -9,6 +9,7 @@ type Body101 struct {
 	Text      string `json:"text"`
 	Receiver  string `json:"recipient"`
 	MessageId string `json:"messageId"`
+	Sender    string
 }
 
 type Body103 struct {
@@ -18,11 +19,13 @@ type Body103 struct {
 type Body104 struct {
 	MessageId     string `json:"messageId"`
 	WithWhom      string `json:"withWhom"`
-	FlagDelForEvr bool   `json:"flagDelForEvr"`
+	Sender        string
+	FlagDelForEvr bool `json:"flagDelForEvr"`
 }
 
 type Body105 struct {
 	MessageId   string `json:"messageId"`
 	WithWhom    string `json:"withWhom"`
 	UpdatedText string `json:"updatedText"`
+	Sender      string
 }
